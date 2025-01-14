@@ -20,9 +20,13 @@ This application is built using a hybrid approach:
 - Functioning webcam
 
 ## Installation
+
 python -m venv venv
+
 venv\Scripts\activate
-pip install -r requirements.txt
+
+
+
 
 ## Install required Python packages:
 pip install -r requirements.txt

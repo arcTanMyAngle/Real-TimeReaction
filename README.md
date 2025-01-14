@@ -22,9 +22,9 @@ This application is built using a hybrid approach:
 ## Installation
 
 python -m venv venv
-
 venv\Scripts\activate
-
+or
+source venv/bin/activate
 
 
 

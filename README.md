@@ -5,7 +5,7 @@ Webcam-based Application that measures user reaction time through motion detecti
 - OpenCV
 - NumPy
 - Webcam
-## System Architecture
+## System Architecture 
 This application is built using a hybrid approach:
 - Core timing logic implemented in C++ for microsecond precision
 - Python frontend for webcam handling and user interface
@@ -40,8 +40,11 @@ python test_full_system.py
 # Controls
 
 '+' key: Increase motion detection sensitivity
+
 '-' key: Decrease motion detection sensitivity
+
 'q' key: Quit application
+
 # What to Expect
 
 The application opens two windows:

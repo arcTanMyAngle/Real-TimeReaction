@@ -5,3 +5,9 @@ __pycache__/
 build/
 dist/
 .vs/
+
+# ── C++ / CMake (Real-Time Reaction) ─────────────────────────────────────────
+data/reaction.db
+data/exports/
+.cache/
+compile_commands.json

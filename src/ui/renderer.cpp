@@ -9,6 +9,23 @@
 #include <stdexcept>
 #include <string>
 
+namespace {
+
+ImFont* add_font_or_default(ImGuiIO& io, const char* path, float size_pixels) {
+    ImFontConfig config;
+    config.OversampleH = 3;
+    config.OversampleV = 2;
+
+    if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, size_pixels, &config))
+        return font;
+
+    ImFontConfig fallback_config;
+    fallback_config.SizePixels = size_pixels;
+    return io.Fonts->AddFontDefault(&fallback_config);
+}
+
+} // namespace
+
 Renderer::Renderer(const std::string& title, int w, int h) {
     init_sdl(title, w, h);
     init_imgui();
@@ -28,6 +45,7 @@ Renderer::~Renderer() {
 void Renderer::init_sdl(const std::string& title, int w, int h) {
     // main() handles its own entry point (SDL_MAIN_HANDLED), so tell SDL.
     SDL_SetMainReady();
+    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
         throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
 
@@ -39,9 +57,14 @@ void Renderer::init_sdl(const std::string& title, int w, int h) {
 
     window_ = SDL_CreateWindow(
         title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
+            SDL_WINDOW_ALLOW_HIGHDPI);
     if (!window_)
         throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
+
+    // Allow growing/maximising, but not shrinking below the design resolution
+    // (keeps every control on screen at the smallest supported size).
+    SDL_SetWindowMinimumSize(window_, w, h);
 
     gl_context_ = SDL_GL_CreateContext(window_);
     if (!gl_context_)
@@ -67,6 +90,12 @@ void Renderer::init_imgui() {
 
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // don't litter an imgui.ini next to the exe
+    ImFont* body_font = add_font_or_default(io, "C:/Windows/Fonts/segoeui.ttf", 18.0f);
+    add_font_or_default(io, "C:/Windows/Fonts/segoeui.ttf", 24.0f);
+    add_font_or_default(io, "C:/Windows/Fonts/segoeui.ttf", 28.0f);
+    add_font_or_default(io, "C:/Windows/Fonts/seguisb.ttf", 42.0f);
+    add_font_or_default(io, "C:/Windows/Fonts/seguisb.ttf", 64.0f);
+    io.FontDefault = body_font;
 
     apply_global_style();
 
@@ -97,7 +126,7 @@ void Renderer::apply_global_style() {
     c[ImGuiCol_ButtonActive]  = ImVec4(0.24f, 0.24f, 0.30f, 1.0f);
     c[ImGuiCol_Border]        = ImVec4(0.20f, 0.20f, 0.26f, 1.0f);
 
-    ImGui::GetIO().FontGlobalScale = 1.15f;
+    ImGui::GetIO().FontGlobalScale = 1.0f;
 }
 
 void Renderer::begin_frame() {

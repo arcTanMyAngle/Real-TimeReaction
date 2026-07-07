@@ -66,6 +66,12 @@ void Database::create_schema() {
         ");");
 
     db_.exec(
+        "CREATE TABLE IF NOT EXISTS settings ("
+        "    key   TEXT PRIMARY KEY,"
+        "    value TEXT NOT NULL"
+        ");");
+
+    db_.exec(
         "CREATE TABLE IF NOT EXISTS trials ("
         "    id                   INTEGER PRIMARY KEY AUTOINCREMENT,"
         "    session_id           INTEGER NOT NULL REFERENCES sessions(id),"
@@ -78,6 +84,15 @@ void Database::create_schema() {
         "    false_start          INTEGER NOT NULL DEFAULT 0,"
         "    response_epoch       REAL    NOT NULL DEFAULT 0"
         ");");
+
+    // Phase 6 migration — additive columns. Safe to run on an existing DB:
+    // ALTER ... ADD COLUMN throws if the column already exists, so swallow it.
+    auto try_alter = [&](const char* sql) {
+        try { db_.exec(sql); } catch (...) {}
+    };
+    try_alter("ALTER TABLE sessions ADD COLUMN game_mode TEXT NOT NULL DEFAULT 'classic'");
+    try_alter("ALTER TABLE trials   ADD COLUMN round_winner INTEGER NOT NULL DEFAULT 0");
+    try_alter("ALTER TABLE trials   ADD COLUMN streak_at_time INTEGER NOT NULL DEFAULT 0");
 }
 
 // ── Players ──────────────────────────────────────────────────────────────────
@@ -119,7 +134,7 @@ int Database::insert_session(const Session& s) {
     SQLite::Statement stmt(
         db_,
         "INSERT INTO sessions (player1_id, player2_id, mode, started_at, "
-        "completed_at, notes) VALUES (?, ?, ?, ?, ?, ?)");
+        "completed_at, notes, game_mode) VALUES (?, ?, ?, ?, ?, ?, ?)");
     stmt.bind(1, s.player1_id);
     if (s.player2_id > 0)
         stmt.bind(2, s.player2_id);
@@ -132,6 +147,7 @@ int Database::insert_session(const Session& s) {
     else
         stmt.bind(5, s.completed_at);
     stmt.bind(6, s.notes);
+    stmt.bind(7, s.game_mode.empty() ? "classic" : s.game_mode);
     stmt.exec();
     return static_cast<int>(db_.getLastInsertRowid());
 }
@@ -149,7 +165,7 @@ Session Database::get_session(int session_id) {
     SQLite::Statement stmt(
         db_,
         "SELECT id, player1_id, player2_id, mode, started_at, completed_at, "
-        "notes FROM sessions WHERE id = ?");
+        "notes, game_mode FROM sessions WHERE id = ?");
     stmt.bind(1, session_id);
     if (stmt.executeStep()) {
         s.id           = stmt.getColumn(0).getInt();
@@ -159,6 +175,7 @@ Session Database::get_session(int session_id) {
         s.started_at   = stmt.getColumn(4).getString();
         s.completed_at = stmt.getColumn(5).isNull() ? "" : stmt.getColumn(5).getString();
         s.notes        = stmt.getColumn(6).getString();
+        s.game_mode    = stmt.getColumn(7).getString();
     }
     return s;
 }
@@ -169,7 +186,8 @@ int Database::insert_trial(const Trial& t) {
         db_,
         "INSERT INTO trials (session_id, trial_number, stimulus_type, "
         "stimulus_color, player, stimulus_onset_epoch, reaction_time_ms, "
-        "false_start, response_epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        "false_start, response_epoch, round_winner, streak_at_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     stmt.bind(1, t.session_id);
     stmt.bind(2, t.trial_number);
     stmt.bind(3, t.stimulus_type);
@@ -179,6 +197,8 @@ int Database::insert_trial(const Trial& t) {
     stmt.bind(7, static_cast<double>(t.reaction_time_ms));
     stmt.bind(8, t.false_start ? 1 : 0);
     stmt.bind(9, t.response_epoch);
+    stmt.bind(10, t.round_winner);
+    stmt.bind(11, t.streak_at_time);
     stmt.exec();
     return static_cast<int>(db_.getLastInsertRowid());
 }
@@ -197,6 +217,8 @@ Trial read_trial(SQLite::Statement& stmt) {
     t.reaction_time_ms     = static_cast<float>(stmt.getColumn(7).getDouble());
     t.false_start          = stmt.getColumn(8).getInt() != 0;
     t.response_epoch       = stmt.getColumn(9).getDouble();
+    t.round_winner         = stmt.getColumn(10).getInt();
+    t.streak_at_time       = stmt.getColumn(11).getInt();
     return t;
 }
 
@@ -205,7 +227,7 @@ Trial read_trial(SQLite::Statement& stmt) {
 constexpr const char* kTrialCols =
     "t.id, t.session_id, t.trial_number, t.stimulus_type, t.stimulus_color, "
     "t.player, t.stimulus_onset_epoch, t.reaction_time_ms, t.false_start, "
-    "t.response_epoch";
+    "t.response_epoch, t.round_winner, t.streak_at_time";
 
 } // namespace
 
@@ -235,6 +257,38 @@ std::vector<Trial> Database::get_player_trials(int player_id) {
     while (stmt.executeStep())
         out.push_back(read_trial(stmt));
     return out;
+}
+
+// ── Settings (persisted user/session state) ──────────────────────────────────
+std::string Database::get_setting(const std::string& key,
+                                  const std::string& def) {
+    SQLite::Statement stmt(db_, "SELECT value FROM settings WHERE key = ?");
+    stmt.bind(1, key);
+    if (stmt.executeStep())
+        return stmt.getColumn(0).getString();
+    return def;
+}
+
+void Database::set_setting(const std::string& key, const std::string& value) {
+    SQLite::Statement stmt(
+        db_, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+    stmt.bind(1, key);
+    stmt.bind(2, value);
+    stmt.exec();
+}
+
+float Database::get_personal_best(int player_id) {
+    SQLite::Statement stmt(
+        db_,
+        "SELECT MIN(reaction_time_ms) FROM trials "
+        "WHERE session_id IN (SELECT id FROM sessions "
+        "                     WHERE player1_id = ? OR player2_id = ?) "
+        "  AND false_start = 0 AND reaction_time_ms >= 0");
+    stmt.bind(1, player_id);
+    stmt.bind(2, player_id);
+    if (stmt.executeStep() && !stmt.getColumn(0).isNull())
+        return static_cast<float>(stmt.getColumn(0).getDouble());
+    return -1.0f;
 }
 
 std::string Database::now_iso() {

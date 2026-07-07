@@ -119,3 +119,33 @@ TEST_CASE("Database: get_player_trials filters by the player's sessions") {
     for (const auto& t : alice) REQUIRE(t.session_id == sidA);
     for (const auto& t : bob)   REQUIRE(t.session_id == sidB);
 }
+
+TEST_CASE("settings get/set round-trips and returns default") {
+    Database db = make_db();
+    REQUIRE(db.get_setting("missing", "fallback") == "fallback");
+    db.set_setting("player1", "Alice");
+    REQUIRE(db.get_setting("player1") == "Alice");
+    db.set_setting("player1", "Bob");  // overwrite existing key
+    REQUIRE(db.get_setting("player1") == "Bob");
+}
+
+TEST_CASE("get_personal_best returns -1 with no prior trials") {
+    Database db = make_db();
+    int pid = db.insert_player("Ghost");
+    REQUIRE(db.get_personal_best(pid) == Catch::Approx(-1.0f));
+}
+
+TEST_CASE("get_personal_best returns correct minimum") {
+    Database db = make_db();
+    int pid = db.insert_player("Ghost");
+    Session s; s.player1_id = pid; s.mode = "single";
+    s.started_at = Database::now_iso();
+    int sid = db.insert_session(s);
+    for (float v : {300.0f, 180.0f, 250.0f}) {
+        Trial t; t.session_id = sid; t.player = 1; t.reaction_time_ms = v;
+        t.stimulus_type = "circle"; t.stimulus_color = "red";
+        t.stimulus_onset_epoch = 0; t.false_start = false;
+        db.insert_trial(t);
+    }
+    REQUIRE(db.get_personal_best(pid) == Catch::Approx(180.0f));
+}

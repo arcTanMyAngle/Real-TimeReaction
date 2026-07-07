@@ -38,6 +38,13 @@ public:
     static constexpr float FEEDBACK_MS       = 800.0f;
     static constexpr float COUNTDOWN_S       = 3.0f;
 
+    // Phase 6 — mode constants
+    static constexpr float BLITZ_DURATION_S    = 30.0f;
+    static constexpr float BLITZ_ISI_MIN_S     = 0.5f;
+    static constexpr float BLITZ_ISI_MAX_S     = 1.5f;
+    static constexpr int   SURVIVAL_LIVES      = 3;
+    static constexpr float STREAK_THRESHOLD_MS = 300.0f;
+
     GameSession(const std::string& mode,
                 const std::vector<std::string>& player_names,
                 Database& db);
@@ -52,8 +59,17 @@ public:
     float                      get_countdown_remaining(float now_s) const;
     const std::vector<Trial>&  get_results()       const;
 
+    // Phase 6 accessors
+    GameMode get_mode()              const noexcept { return game_mode_; }
+    int      get_lives(int player)   const noexcept;  // player: 1 or 2
+    float    get_time_remaining()    const noexcept;  // Blitz only
+    int      get_current_streak()    const noexcept { return current_streak_; }
+    int      get_max_streak()        const noexcept { return max_streak_; }
+    int      get_rounds_won(int player) const noexcept;  // Race only
+
 private:
     std::string              mode_;
+    GameMode                 game_mode_ = GameMode::Classic;
     std::vector<std::string> player_names_;
     Database&                db_;
 
@@ -77,15 +93,29 @@ private:
     int         active_player_      = 1;
     bool        phase_initialized_  = false;  // first tick latches phase_start_s_
 
+    // Phase 6 — mode state
+    int   lives_[2]        = {SURVIVAL_LIVES, SURVIVAL_LIVES};
+    float time_remaining_  = BLITZ_DURATION_S;
+    float last_tick_time_s_ = 0.0f;
+    bool  last_tick_init_  = false;
+    int   current_streak_  = 0;
+    int   max_streak_      = 0;
+    int   rounds_won_[2]   = {0, 0};
+    bool  round_settled_   = false;
+
     // Helpers
     int  current_player() const noexcept;
     bool key_is_valid(SDL_Keycode key) const noexcept;
     void enter_waiting(float t);
     void enter_stimulus(float t);
     void enter_collecting(float t);
-    void record_response(float elapsed_ms);
+    // responder < 0 → use active_player_; Race passes the actual presser (1/2)
+    // so the reaction is attributed to the player who won the round.
+    void record_response(float elapsed_ms, int responder = -1);
     void record_timeout();
     void record_false_start(float t, SDL_Keycode key);
+    void update_streak(float rt_ms, bool false_start, bool miss);
+    void lose_life_if_survival(int player);
     void complete();
 
     static std::string random_stimulus_type();

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(RealTimeReaction VERSION 1.0 LANGUAGES CXX)
+project(reActivation VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,6 +7,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── System packages ───────────────────────────────────────────────────────────
 find_package(SDL2   REQUIRED)
+
+# SDL_mixer — try modern CMake config first, fall back to pkg-config
+find_package(SDL2_mixer QUIET CONFIG)
+if(NOT SDL2_mixer_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2_MIXER REQUIRED SDL2_mixer)
+endif()
+
+# Helper to link SDL_mixer regardless of which path found it
+function(link_sdl_mixer target)
+    if(SDL2_mixer_FOUND)
+        target_link_libraries(${target} PRIVATE SDL2_mixer::SDL2_mixer)
+    else()
+        target_include_directories(${target} PRIVATE ${SDL2_MIXER_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE ${SDL2_MIXER_LIBRARIES})
+    endif()
+endfunction()
+
 find_package(GLEW   REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core videoio imgproc)
@@ -83,10 +101,13 @@ add_executable(rtr
     src/core/timer.cpp
     src/core/detection.cpp
     src/core/session.cpp
+    src/core/app_state.cpp
     src/data/database.cpp
     src/data/analytics.cpp
+    src/audio/audio_engine.cpp
     src/ui/renderer.cpp
     src/ui/camera_texture.cpp
+    src/ui/effects.cpp
     src/ui/screens/menu_screen.cpp
     src/ui/screens/game_screen.cpp
     src/ui/screens/results_screen.cpp
@@ -97,6 +118,7 @@ target_link_libraries(rtr PRIVATE
     imgui_lib implot_lib SQLiteCpp
     ${OpenCV_LIBS} SDL2::SDL2 GLEW::GLEW OpenGL::GL
 )
+link_sdl_mixer(rtr)
 
 # Create data/ dir at build time
 add_custom_command(TARGET rtr POST_BUILD

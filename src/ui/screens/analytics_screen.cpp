@@ -80,12 +80,7 @@ void AnalyticsScreen::load_player_data(int player_id) {
 }
 
 void AnalyticsScreen::render() {
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(Display::W),
-                                    static_cast<float>(Display::H)));
-    ImGui::Begin("##analytics", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoResize);
+    begin_fullscreen("##analytics", /*scrollable=*/true);
 
     ImGui::PushStyleColor(ImGuiCol_Text, Colors::ACCENT);
     ImGui::SetWindowFontScale(2.0f);

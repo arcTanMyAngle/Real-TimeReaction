@@ -3,6 +3,8 @@
 #include "data/database.hpp"
 #include "core/session.hpp"
 #include "ui/camera_texture.hpp"
+#include "ui/effects.hpp"
+#include "audio/audio_engine.hpp"
 
 #include "imgui.h"
 #include <string>
@@ -11,7 +13,7 @@
 class GameScreen : public IScreen {
 public:
     GameScreen(Database& db, const std::vector<std::string>& player_names,
-               const std::string& mode);
+               const std::string& mode, const std::string& game_mode = "classic");
     ~GameScreen();
 
     void handle_event(const SDL_Event& e) override;
@@ -21,10 +23,13 @@ public:
 
     // main.cpp reads these before switching to the Results screen.
     const std::vector<Trial>& get_results() const { return session_.get_results(); }
+    GameMode get_game_mode()  const { return session_.get_mode(); }
+    int      get_max_streak() const { return session_.get_max_streak(); }
 
 private:
     Database&                db_;
     std::string              mode_;
+    std::string              game_mode_;
     std::vector<std::string> player_names_;
     GameSession              session_;
     CameraTexture            camera_;
@@ -38,6 +43,15 @@ private:
     std::string flash_name_;
     std::size_t seen_results_ = 0;
 
+    // Phase 5 — feel layer.
+    AudioEngine  audio_;
+    GameEffects  effects_;
+    float        personal_best_ms_ = -1.0f;   // loaded at construction
+    SessionState prev_state_        = SessionState::Idle;
+    ImVec2       camera_center_     = {};      // precomputed per layout
+
+    void process_feel(SessionState st);  // audio + effect triggers
+
     void render_single_player_layout();
     void render_two_player_layout();
     void render_player_panel(ImVec2 pos, ImVec2 size, int player,
@@ -50,6 +64,8 @@ private:
                          const TrialInfo& info);
     void render_countdown_overlay(ImVec2 pos, ImVec2 size, float remaining_s);
     void render_hud_panel(ImVec2 pos, ImVec2 size);
+    void render_mode_widgets();                        // streak + mode-specific HUD
+    void render_lives(ImVec2 pos, int lives, ImVec4 color);
     void render_progress_bar(ImVec2 pos, ImVec2 size);
     void draw_stimulus_shape(ImDrawList* dl, const std::string& type,
                              const std::string& color, ImVec2 center, float radius);

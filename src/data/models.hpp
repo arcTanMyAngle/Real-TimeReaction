@@ -2,6 +2,26 @@
 #include <string>
 #include <optional>
 
+// Game modes (Phase 6). Defined in the data layer so both the session and the
+// UI screens can reference it without pulling in SDL/Database headers.
+enum class GameMode { Classic, Race, Blitz, Survival };
+
+inline GameMode mode_from_string(const std::string& s) {
+    if (s == "race")     return GameMode::Race;
+    if (s == "blitz")    return GameMode::Blitz;
+    if (s == "survival") return GameMode::Survival;
+    return GameMode::Classic;  // "classic", "single", "two_player", anything else
+}
+
+inline const char* mode_to_string(GameMode m) {
+    switch (m) {
+        case GameMode::Race:     return "race";
+        case GameMode::Blitz:    return "blitz";
+        case GameMode::Survival: return "survival";
+        default:                 return "classic";
+    }
+}
+
 struct Player {
     int         id   = 0;
     std::string name;
@@ -16,6 +36,7 @@ struct Session {
     std::string started_at;
     std::string completed_at;
     std::string notes;
+    std::string game_mode = "classic"; // "classic"|"race"|"blitz"|"survival"
 };
 
 struct Trial {
@@ -29,6 +50,8 @@ struct Trial {
     float       reaction_time_ms     = -1.0f; // -1 = miss/timeout
     bool        false_start          = false;
     double      response_epoch       = 0.0;
+    int         round_winner         = 0;   // 0=no contest, 1=P1, 2=P2 (Race)
+    int         streak_at_time       = 0;   // live streak count at completion
 };
 
 // Sentinel — use instead of optional to avoid nullable floats in hot path

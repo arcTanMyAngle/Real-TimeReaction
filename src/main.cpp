@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 
+#include "core/app_state.hpp"
 #include "data/database.hpp"
 #include "data/models.hpp"
 #include "ui/colors.hpp"
@@ -22,11 +23,17 @@ int main() {
     Database db;
     db.create_schema();
 
-    Renderer renderer("Real-Time Reaction", Display::W, Display::H);
-    std::unique_ptr<IScreen> screen = std::make_unique<MenuScreen>(db);
+    // Current user/session state — pre-loaded from the DB, persists across
+    // screens and restarts (one name per player).
+    AppState app_state = load_app_state(db);
+
+    Renderer renderer("reActivation", Display::W, Display::H);
+    std::unique_ptr<IScreen> screen = std::make_unique<MenuScreen>(db, app_state);
 
     std::vector<Trial>       last_trials;
     std::vector<std::string> last_names;
+    GameMode                 last_game_mode  = GameMode::Classic;
+    int                      last_max_streak = 0;
 
     bool running = true;
     while (running) {
@@ -45,8 +52,11 @@ int main() {
         if (sr.transition) {
             // The Game screen owns the completed trials; grab them before it is
             // replaced so the Results screen can be constructed with them.
-            if (auto* gs = dynamic_cast<GameScreen*>(screen.get()))
-                last_trials = gs->get_results();
+            if (auto* gs = dynamic_cast<GameScreen*>(screen.get())) {
+                last_trials     = gs->get_results();
+                last_game_mode  = gs->get_game_mode();
+                last_max_streak = gs->get_max_streak();
+            }
 
             switch (sr.next) {
                 case ScreenResult::Next::Quit:
@@ -55,18 +65,18 @@ int main() {
                 case ScreenResult::Next::Game:
                     last_names = sr.player_names;
                     screen = std::make_unique<GameScreen>(db, sr.player_names,
-                                                          sr.mode);
+                                                          sr.mode, sr.game_mode);
                     break;
                 case ScreenResult::Next::Results:
-                    screen = std::make_unique<ResultsScreen>(last_trials,
-                                                             last_names);
+                    screen = std::make_unique<ResultsScreen>(
+                        last_trials, last_names, last_game_mode, last_max_streak);
                     break;
                 case ScreenResult::Next::Analytics:
                     screen = std::make_unique<AnalyticsScreen>(db);
                     break;
                 case ScreenResult::Next::Menu:
                 default:
-                    screen = std::make_unique<MenuScreen>(db);
+                    screen = std::make_unique<MenuScreen>(db, app_state);
                     break;
             }
         }

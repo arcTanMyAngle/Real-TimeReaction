@@ -25,6 +25,14 @@ public:
     std::vector<Trial> get_session_trials(int session_id);
     std::vector<Trial> get_player_trials(int player_id);
 
+    // Best valid reaction time across all prior sessions for a player, or -1.0f.
+    float get_personal_best(int player_id);
+
+    // Persisted key/value settings (used for the saved user/session state).
+    std::string get_setting(const std::string& key,
+                            const std::string& def = "");
+    void        set_setting(const std::string& key, const std::string& value);
+
     static std::string now_iso();
 
 private:

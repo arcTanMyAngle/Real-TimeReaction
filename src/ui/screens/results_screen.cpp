@@ -8,8 +8,12 @@
 #include <cstdio>
 
 ResultsScreen::ResultsScreen(const std::vector<Trial>& trials,
-                             const std::vector<std::string>& player_names)
-    : trials_(trials), player_names_(player_names) {}
+                             const std::vector<std::string>& player_names,
+                             GameMode mode, int max_streak)
+    : trials_(trials),
+      player_names_(player_names),
+      game_mode_(mode),
+      max_streak_(max_streak) {}
 
 void ResultsScreen::handle_event(const SDL_Event& e) {
     if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
@@ -69,6 +73,27 @@ bool ResultsScreen::is_two_player() const {
     return false;
 }
 
+char ResultsScreen::compute_rank(float mean_ms, int misses, int total) const {
+    if (mean_ms < 0.0f || total == 0) return 'D';
+    // Penalize misses: each miss adds 40ms to the effective average.
+    const float adj = mean_ms + (misses * 40.0f);
+    if (adj < 200.0f) return 'S';
+    if (adj < 250.0f) return 'A';
+    if (adj < 300.0f) return 'B';
+    if (adj < 350.0f) return 'C';
+    return 'D';
+}
+
+ImVec4 ResultsScreen::rank_color(char r) const {
+    switch (r) {
+        case 'S': return ImVec4{1.0f, 0.84f, 0.0f, 1.0f};  // gold
+        case 'A': return Colors::SUCCESS;
+        case 'B': return Colors::ACCENT;
+        case 'C': return Colors::WARNING;
+        default:  return Colors::DANGER;
+    }
+}
+
 std::string ResultsScreen::determine_winner() const {
     const float a1 = player_avg(1);
     const float a2 = player_avg(2);
@@ -80,12 +105,7 @@ std::string ResultsScreen::determine_winner() const {
 }
 
 void ResultsScreen::render() {
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(Display::W),
-                                    static_cast<float>(Display::H)));
-    ImGui::Begin("##results", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoResize);
+    begin_fullscreen("##results", /*scrollable=*/true);
 
     ImGui::PushStyleColor(ImGuiCol_Text, Colors::ACCENT);
     ImGui::SetWindowFontScale(2.0f);
@@ -95,10 +115,17 @@ void ResultsScreen::render() {
     ImGui::Dummy(ImVec2(0, 12));
 
     if (is_two_player()) {
+        render_mode_header();
         render_two_player_stats();
         ImGui::Dummy(ImVec2(0, 8));
         render_winner_banner();
+        ImVec4 scol = max_streak_ >= 5 ? Colors::SUCCESS
+                    : max_streak_ >= 3 ? Colors::ACCENT
+                                       : Colors::MUTED;
+        ImGui::TextColored(scol, "Max Streak: %d  (under 300 ms)", max_streak_);
     } else {
+        render_rank_display();
+        render_mode_header();
         render_stats_row(compute_stats(1), 1);
     }
 
@@ -108,6 +135,84 @@ void ResultsScreen::render() {
     render_action_buttons();
 
     ImGui::End();
+}
+
+void ResultsScreen::render_rank_display() {
+    const Stats s     = compute_stats(1);
+    const int   total = s.count;  // hits + misses (excludes false starts)
+    const char  rank  = compute_rank(s.avg_ms, s.misses, total);
+    const ImVec4 col  = rank_color(rank);
+
+    const char* desc = "Keep Practicing";
+    switch (rank) {
+        case 'S': desc = "Superhuman";      break;
+        case 'A': desc = "Elite";           break;
+        case 'B': desc = "Solid";           break;
+        case 'C': desc = "Average";         break;
+        default:  desc = "Keep Practicing"; break;
+    }
+
+    ImGui::BeginChild("##rank", ImVec2(Display::W - 80.0f, 132.0f), true);
+    const std::string letter = std::string("[ ") + rank + " ]";
+    ImGui::SetWindowFontScale(3.4f);
+    ImVec2 lsz = ImGui::CalcTextSize(letter.c_str());
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - lsz.x) * 0.5f);
+    ImGui::TextColored(col, "%s", letter.c_str());
+    ImGui::SetWindowFontScale(1.0f);
+
+    ImVec2 dsz = ImGui::CalcTextSize(desc);
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - dsz.x) * 0.5f);
+    ImGui::TextColored(col, "%s", desc);
+    ImGui::EndChild();
+
+    ImVec4 scol = max_streak_ >= 5 ? Colors::SUCCESS
+                : max_streak_ >= 3 ? Colors::ACCENT
+                                   : Colors::MUTED;
+    ImGui::TextColored(scol, "Max Streak: %d  (under 300 ms)", max_streak_);
+    ImGui::Dummy(ImVec2(0, 8));
+}
+
+void ResultsScreen::render_mode_header() {
+    if (game_mode_ == GameMode::Race) {
+        int w1 = 0, w2 = 0;
+        for (const auto& t : trials_) {
+            if (t.round_winner == 1) ++w1;
+            else if (t.round_winner == 2) ++w2;
+        }
+        const std::string n1 =
+            (!player_names_.empty() && !player_names_[0].empty())
+                ? player_names_[0] : "Player 1";
+        const std::string n2 =
+            (player_names_.size() > 1 && !player_names_[1].empty())
+                ? player_names_[1] : "Player 2";
+        ImGui::BeginChild("##racehdr", ImVec2(Display::W - 80.0f, 64.0f), true);
+        ImGui::SetWindowFontScale(1.6f);
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "%s  %d - %d  %s", n1.c_str(), w1, w2,
+                      n2.c_str());
+        ImVec2 sz = ImGui::CalcTextSize(buf);
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - sz.x) * 0.5f);
+        const ImVec4 col = (w1 == w2) ? Colors::WARNING
+                         : (w1 > w2)  ? Colors::P1 : Colors::P2;
+        ImGui::TextColored(col, "%s", buf);
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::EndChild();
+        ImGui::Dummy(ImVec2(0, 8));
+    } else if (game_mode_ == GameMode::Blitz) {
+        int valid = 0;
+        for (const auto& t : trials_)
+            if (!t.false_start && !is_miss(t)) ++valid;
+        ImGui::TextColored(Colors::ACCENT, "Blitz score: %d valid presses", valid);
+        ImGui::TextColored(Colors::MUTED, "Trials attempted: %d",
+                           static_cast<int>(trials_.size()));
+        ImGui::Dummy(ImVec2(0, 8));
+    } else if (game_mode_ == GameMode::Survival) {
+        int survived = 0;
+        for (const auto& t : trials_)
+            if (!t.false_start) ++survived;
+        ImGui::TextColored(Colors::ACCENT, "Survived %d trials", survived);
+        ImGui::Dummy(ImVec2(0, 8));
+    }
 }
 
 void ResultsScreen::render_two_player_stats() {

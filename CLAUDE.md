@@ -1,7 +1,7 @@
-# Real-Time Reaction — C++ Project Context
+# reActivation — C++ Project Context
 
 ## What This Is
-Reaction time measurement app for 1–2 local players. A visual stimulus appears on screen;
+**reActivation** — a reaction time measurement app for 1–2 local players. A visual stimulus appears on screen;
 players respond via keyboard. The app measures stimulus-onset to keypress delta, persists
 all trials to SQLite, and displays analytics with charts.
 

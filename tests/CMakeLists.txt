@@ -20,11 +20,21 @@ target_sources(rtr_tests PRIVATE
 )
 target_link_libraries(rtr_tests PRIVATE imgui_lib)
 
+# Phase 6: game-mode tests (Race / Blitz / Survival / streak / rank).
+target_sources(rtr_tests PRIVATE test_game_modes.cpp)
+
 # Phase 4: analytics tests (pure computation + CSV export, no UI).
 target_sources(rtr_tests PRIVATE
     test_analytics.cpp
     ${CMAKE_SOURCE_DIR}/src/data/analytics.cpp
 )
+
+# Phase 5: audio engine tests (procedural WAV generation, SDL_mixer).
+target_sources(rtr_tests PRIVATE
+    test_audio.cpp
+    ${CMAKE_SOURCE_DIR}/src/audio/audio_engine.cpp
+)
+link_sdl_mixer(rtr_tests)
 
 include(Catch)
 catch_discover_tests(rtr_tests)

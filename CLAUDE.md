@@ -15,6 +15,7 @@ all trials to SQLite, and displays analytics with charts.
 | UI + Draw | Dear ImGui 1.90+ | FetchContent |
 | Charts | ImPlot 0.16+ | FetchContent |
 | Camera | OpenCV 4.x (videoio, imgproc, core) | system package |
+| Audio | SDL_mixer 2.x (procedural WAV synthesis) | system package |
 | Database | SQLiteCpp 3.x | FetchContent |
 | SQLite3 | via SQLiteCpp | bundled |
 | Testing | Catch2 v3 | FetchContent |
@@ -30,18 +31,22 @@ real-time-reaction/
 │   └── exports/
 ├── src/
 │   ├── main.cpp
+│   ├── audio/
+│   │   └── audio_engine.hpp / audio_engine.cpp   # SDL_mixer procedural WAV (Phase 5)
 │   ├── core/
 │   │   ├── timer.hpp / timer.cpp
 │   │   ├── detection.hpp / detection.cpp
-│   │   └── session.hpp / session.cpp
+│   │   ├── session.hpp / session.cpp             # state machine + game modes/streak (Phase 6)
+│   │   └── app_state.hpp / app_state.cpp         # persisted user/session state
 │   ├── data/
-│   │   ├── models.hpp
-│   │   ├── database.hpp / database.cpp
+│   │   ├── models.hpp                            # + GameMode enum
+│   │   ├── database.hpp / database.cpp           # + settings key/value table
 │   │   └── analytics.hpp / analytics.cpp
 │   └── ui/
-│       ├── screen.hpp             # IScreen interface
+│       ├── screen.hpp             # IScreen interface + begin_fullscreen()
 │       ├── renderer.hpp / renderer.cpp
 │       ├── camera_texture.hpp / camera_texture.cpp
+│       ├── effects.hpp / effects.cpp             # flash/label/record/scanlines/border (Phase 5)
 │       ├── colors.hpp             # ImVec4 constants
 │       └── screens/
 │           ├── menu_screen.hpp / menu_screen.cpp
@@ -54,7 +59,9 @@ real-time-reaction/
     ├── test_timer.cpp
     ├── test_session.cpp
     ├── test_two_player.cpp        # Phase 3
-    └── test_analytics.cpp         # Phase 4
+    ├── test_analytics.cpp         # Phase 4
+    ├── test_audio.cpp             # Phase 5
+    └── test_game_modes.cpp        # Phase 6
 ```
 
 ## Design Decisions — Immutable
@@ -62,8 +69,11 @@ real-time-reaction/
 2. **Motion detection = presence/idle only.** `DetectionEngine` returns data structs. It never draws.
 3. **Camera pipeline = OpenCV Mat → OpenGL texture.** Conversion happens only in `CameraTexture`. Nowhere else.
 4. **All DB access via `Database` class.** No raw sqlite3 calls outside `database.cpp`.
-5. **All rendering via ImGui.** No SDL2 direct drawing. No cv2.imshow. Stimuli drawn via `ImDrawList`.
+5. **All rendering via ImGui.** No SDL2 direct drawing. No cv2.imshow. Stimuli/effects drawn via `ImDrawList`.
 6. **Screen management via `IScreen` polymorphism.** `main.cpp` owns a `unique_ptr<IScreen>` and swaps it.
+7. **Audio is procedural.** `AudioEngine` synthesises every sound as 16-bit PCM → in-memory WAV at startup (no asset files) and is silent-safe when there is no audio device.
+8. **Session/user state persists.** `AppState` (one name per player + mode) is saved via the `Database` `settings` key/value table, so it survives navigation and restarts.
+9. **Screens fill the live viewport.** All full-screen windows use `begin_fullscreen()` (in `screen.hpp`) so the resizable / high-DPI window reflows instead of a hard-coded 1280×720.
 
 ## Build Commands
 ```bash
@@ -83,13 +93,13 @@ cd build && ctest --output-on-failure
 ## System Dependency Install
 ```bash
 # Ubuntu / Debian
-sudo apt install libsdl2-dev libglew-dev libopencv-dev libsqlite3-dev
+sudo apt install libsdl2-dev libsdl2-mixer-dev libglew-dev libopencv-dev libsqlite3-dev
 
 # macOS (Homebrew)
-brew install sdl2 glew opencv sqlite3
+brew install sdl2 sdl2_mixer glew opencv sqlite3
 
 # Windows — use vcpkg
-vcpkg install sdl2 glew opencv4 sqlite3
+vcpkg install sdl2 sdl2-mixer glew opencv4 sqlite3
 # then: cmake -B build -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcpkg.cmake
 ```
 
